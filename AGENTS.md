@@ -33,7 +33,17 @@ The project follows a strict Object-Oriented design. Components are designed for
     * Must integrate Langfuse callbacks automatically.
 * **Interface:** specific generic interface for creating concrete LLM services (e.g., OpenAI, Anthropic).
 
-### 2. Transforms (Atomic Units)
+### 2. Datasets
+* **Role:** Unified container for managing data ingestion and structure.
+* **Core Components:**
+    * **Schema:** Every dataset must have a strict `Pydantic` model definition for its records.
+    * **Loader:** Abstract interface for ingesting raw data (CSV, JSONL, HuggingFace) into the schema.
+* **Behavior:**
+    * **Immutability:** Base datasets should remain immutable. Augmentations produce derived dataset objects.
+    * **Serialization:** Built-in support for exporting records to JSONL or arrow formats.
+    * **Validation:** Enforces schema compliance upon loading.
+
+### 3. Transforms (Atomic Units)
 * **Role:** Performs a single augmentation task.
 * **Inputs:**
     * `Input Schema`: Pydantic model representing the dataset record.
@@ -42,18 +52,18 @@ The project follows a strict Object-Oriented design. Components are designed for
     * `Prompt`: Jinja2 template. Must support raw string, relative file path, or package prompt ID.
 * **Logic:** Render Prompt (using Input) -> Invoke LLM -> Parse to Output Schema -> Merge with Input.
 
-### 3. Pipelines
+### 4. Pipelines
 * **Role:** Chain of Responsibility.
 * **Logic:** Execute a sequence of `Transforms`.
 * **Validation:** Ensure `Output Schema` of Transform $N$ matches `Input Schema` of Transform $N+1$.
 * **Visualization:** Include Graphviz utilities to visualize the pipeline DAG.
 
-### 4. Samplers
+### 5. Samplers
 * **Role:** Selects data subsets for augmentation.
-* **Inputs:** Dataset, Schema, Mapping (Dataset fields -> Sampling params), Count, Exclusions.
+* **Inputs:** Dataset Object, Mapping (Dataset fields -> Sampling params), Count, Exclusions.
 * **Flow:** `Pre-filter` -> `Sample` (Random/Lambda/Ordering) -> `Post-filter`.
 
-### 5. Augmentors (Orchestrators)
+### 6. Augmentors (Orchestrators)
 * **Role:** High-level controller combining: Dataset + Pipeline + Sampler.
 * **Workflow:**
     1.  **Sample:** Select records using the `Sampler`.
@@ -72,7 +82,7 @@ The project follows a strict Object-Oriented design. Components are designed for
 - **Type Hinting:** Use modern Python 3.13+ syntax (e.g., `list[str]` instead of `List[str]`, `str | None` instead of `Optional[str]`). Annotate all inputs and outputs.
 - **Output:** DO NOT use `print()`. Use `logging` for all terminal outputs.
 - **Logic:** Prefer standard library or installed package features over custom re-implementations. Explore documentation via MCP tools if unsure of latest syntax.
-- **Configuration:** Use Pydantic models to manage settings. Load from `.env` (global) with a fallback to `.env.example`.
+- **Configuration:** Use Pydantic models to manage settings. Load from `.env` (global) inspired from `.env.example`.
 
 ---
 
