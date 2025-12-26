@@ -1,6 +1,6 @@
-# Project Context: tea (Text Augmentation Library)
+# Project Context: langaug (Text Augmentation Library)
 
-**tea** is a Python package for facilitating text augmentation using Large Language Models (LLMs), specifically optimized for low-resource languages. It employs a modular, object-oriented architecture to augment datasets via intelligent sampling and transformation pipelines.
+**langaug** is a Python package for facilitating text augmentation using Large Language Models (LLMs), specifically optimized for low-resource languages. It employs a modular, object-oriented architecture to augment datasets via intelligent sampling and transformation pipelines.
 
 ## Tech Stack & Dependencies
 
@@ -13,8 +13,8 @@
 
 ## Project Structure
 
-- **Core Source:** `src/tea`
-- **Prompts:** `src/tea/data/prompts` (Format: `{prompt_name}.jinja2`).
+- **Core Source:** `src/langaug`
+- **Prompts:** `src/langaug/data/prompts` (Format: `{prompt_name}.jinja2`).
 - **Playground/Notebooks:** `lab/`
 - **Base Data:** `data/base`
 - **Generated Outputs:** `data/output`
@@ -84,10 +84,10 @@ The project follows a strict Object-Oriented design. Components are designed for
 - **Upgrade/Add:**
     1.  Add package name to `requirements.txt`.
     2.  Run `uv add -r requirements.txt`.
-- **Dev Install:** Run `uv pip install -e .` in root to reflect changes in `lab/` scripts (allows `import tea`).
+- **Dev Install:** Run `uv pip install -e .` in root to reflect changes in `lab/` scripts (allows `import langaug`).
 
 ### Testing & Iteration
-- **Playground:** Use scripts in `lab/` to test logic. Import the library using `import tea`.
+- **Playground:** Use scripts in `lab/` to test logic. Import the library using `import langaug`.
 - **Refactoring:** After changing source code, always re-run `uv pip install -e .` to update the environment reference.
 
 ---
