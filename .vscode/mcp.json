@@ -1,0 +1,21 @@
+{
+	"servers": {
+        "uv-docs": {
+            "type": "sse",
+            "url": "https://gitmcp.io/astral-sh/uv"
+        },
+        "pydantic-docs": {
+            "type": "sse",
+            "url": "https://gitmcp.io/pydantic/pydantic"
+        },
+        "langchain-docs": {
+            "url": "https://docs.langchain.com/mcp",
+            "type": "http"
+        },
+		"langfuse-docs": {
+			"url": "https://langfuse.com/api/mcp",
+			"type": "http"
+		},
+	},
+	"inputs": []
+}
