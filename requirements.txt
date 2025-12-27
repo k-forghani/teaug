@@ -1,3 +1,8 @@
-pydantic
 langchain
+langchain-openai
 langfuse
+pydantic
+pydantic-settings
+datasets
+jinja2
+python-dotenv
