@@ -1,0 +1,8 @@
+Rewrite this Persian sentence to match the target sentiment. Keep style and length.
+
+{% for item in items -%}
+Sentence: "{{ item.text }}"
+From: {{ item.source_label }}
+To: {{ item.target_label }}
+{% endfor %}
+Output: JSON array with the rewritten sentence only.
