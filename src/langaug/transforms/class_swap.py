@@ -53,7 +53,11 @@ class ClassSwapTransform(BaseTransform[ClassSwapInput, ClassSwapOutput]):
             for text, source, target in zip(record.texts, record.source_labels, record.target_labels)
         ]
 
-        return PromptLoader.render(self._prompt, {"items": pairs})
+        all_labels = []
+        if record.label_descriptions:
+            all_labels = [{"key": key, "value": value} for key, value in record.label_descriptions.items()]
+
+        return PromptLoader.render(self._prompt, {"items": pairs, "all_labels": all_labels})
 
     def _merge_output(self, input_record: ClassSwapInput, llm_output: ClassSwapOutput) -> ClassSwapOutput:
         return ClassSwapOutput(texts=llm_output.texts)
