@@ -2,7 +2,6 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
-from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -22,7 +21,7 @@ class SamplerConfig(BaseModel):
 class BaseSampler(ABC, Generic[T]):
     def __init__(self, config: SamplerConfig, sampler_id: str | None = None) -> None:
         self._config = config
-        self._sampler_id = sampler_id or f"sampler_{uuid4().hex[:8]}"
+        self._sampler_id = sampler_id or self.__class__.__name__
         if config.seed is not None:
             random.seed(config.seed)
 
@@ -77,3 +76,16 @@ class StratifiedSampler(BaseSampler[T]):
             result.extend(random.sample(group_items, count))
 
         return result[: self._config.count]
+
+
+class ExclusiveSampler(BaseSampler[T]):
+    def __init__(self, config: SamplerConfig, sampler_id: str | None = None) -> None:
+        super().__init__(config, sampler_id)
+        self._sampled_indices: set[int] = set()
+
+    def _sample(self, candidates: list[tuple[int, T]]) -> list[tuple[int, T]]:
+        available = [item for item in candidates if item[0] not in self._sampled_indices]
+        count = min(self._config.count, len(available))
+        sampled = random.sample(available, count)
+        self._sampled_indices.update(idx for idx, _ in sampled)
+        return sampled

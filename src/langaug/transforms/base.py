@@ -1,7 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
-from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -33,7 +32,7 @@ class BaseTransform(ABC, Generic[InputT, OutputT]):
         self._output_schema = output_schema
         self._prompt = prompt
         self._llm_service = llm_service
-        self._transform_id = transform_id or f"{self.__class__.__name__}_{uuid4().hex[:8]}"
+        self._transform_id = transform_id or self.__class__.__name__
 
     @property
     def transform_id(self) -> str:

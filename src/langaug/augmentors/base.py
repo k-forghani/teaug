@@ -1,6 +1,5 @@
 import logging
 from typing import Any, Callable, Generic, TypeVar
-from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -36,7 +35,7 @@ class Augmentor(Generic[InputT, OutputT]):
         self._sampler = sampler
         self._record_transformer = record_transformer
         self._output_transformer = output_transformer
-        self._augmentor_id = augmentor_id or f"augmentor_{uuid4().hex[:8]}"
+        self._augmentor_id = augmentor_id or self.__class__.__name__
 
     @property
     def augmentor_id(self) -> str:

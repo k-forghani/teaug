@@ -1,3 +1,4 @@
+import csv
 import logging
 from pathlib import Path
 
@@ -9,12 +10,13 @@ from langaug import (
     ClassSwapOutput,
     ClassSwapTransform,
     DatasetMeta,
+    ExclusiveSampler,
     HuggingFaceLoader,
     Pipeline,
-    RandomSampler,
     SamplerConfig,
     setup_logging,
 )
+from langaug.datasets.base import Dataset
 
 setup_logging("INFO")
 logger = logging.getLogger(__name__)
@@ -58,16 +60,30 @@ def build_class_swap_input(records: list[SentimentRecord]) -> ClassSwapInput:
 def main() -> None:
     logger.info("Starting Class Swap Demo")
 
-    llm_service = langaug.OpenAIService().configure(temperature=0.7, max_tokens=8192, reasoning_effort="minimal")
+    seed = 42
+    llm_service = langaug.OpenAIService().configure(temperature=0.7, max_tokens=8192)
+
+    cache_csv = Path("data/base/sentipers_train.csv")
 
     loader = HuggingFaceLoader(schema=SentimentRecord, field_mapping={"text": "text", "label": "label"})
     dataset = loader.load(source="kforghani/sentipers", split="train", limit=10)
     logger.info("Loaded dataset with %d records", len(dataset))
 
+    cache_csv.parent.mkdir(parents=True, exist_ok=True)
+    with cache_csv.open("w", encoding="utf-8", newline="") as file:
+        fieldnames = ["text", "label"]
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in dataset.records:
+            writer.writerow({"text": record.text, "label": record.label})
+    logger.info("Cached base dataset CSV at %s", cache_csv)
+
+    logger.info("Loaded dataset with %d records", len(dataset))
+
     class_swap = ClassSwapTransform(llm_service=llm_service)
     pipeline = Pipeline(transforms=[class_swap])
 
-    sampler = RandomSampler(SamplerConfig(count=3))
+    sampler = ExclusiveSampler(SamplerConfig(count=5, seed=seed))
     sampled = sampler.sample(dataset)
     sampled_records = [record for _, record in sampled]
 
@@ -80,21 +96,42 @@ def main() -> None:
         logger.error("Class swap failed: %s", result.error)
     else:
         for idx, text in enumerate(result.final_output.texts):
+            source_index, _ = sampled[idx]
+            meta = DatasetMeta(
+                is_synthetic=True,
+                pipeline_id=pipeline.pipeline_id,
+                sampler_id=sampler.sampler_id,
+                source_index=source_index,
+            )
             outputs.append(
                 AugmentedSentimentRecord(
                     text=text,
                     label=int(batch_input.target_labels[idx]),
                     original_text=batch_input.texts[idx],
+                    meta=meta,
                 )
             )
 
-    output_path = Path("data/output/class_swap_results.jsonl")
+    output_csv = Path("data/output/augmented_sentipers_train.csv")
     if outputs:
-        from langaug.datasets.base import Dataset
+        combined_records: list[SentimentRecord | AugmentedSentimentRecord] = []
+        
+        for record in dataset.records:
+            combined_records.append(record)
+        
+        for augmented_record in outputs:
+            combined_records.append(augmented_record)
 
-        augmented_dataset = Dataset(records=outputs, schema=AugmentedSentimentRecord)
-        augmented_dataset.to_jsonl(output_path)
-        logger.info("Results saved to %s", output_path)
+        output_csv.parent.mkdir(parents=True, exist_ok=True)
+        with output_csv.open("w", encoding="utf-8", newline="") as file:
+            fieldnames = ["text", "label"]
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            for record in combined_records:
+                writer.writerow({"text": record.text, "label": record.label})
+
+        logger.info("Augmented dataset saved to %s (original: %d, augmented: %d, total: %d)", 
+                    output_csv, len(dataset), len(outputs), len(combined_records))
     else:
         logger.warning("No outputs generated")
 

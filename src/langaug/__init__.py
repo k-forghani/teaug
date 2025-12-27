@@ -2,7 +2,7 @@ from langaug.augmentors import AugmentationReport, Augmentor
 from langaug.config import Settings, get_settings, setup_logging
 from langaug.datasets import BaseLoader, BaseRecord, Dataset, DatasetMeta, HuggingFaceLoader
 from langaug.pipelines import Pipeline, PipelineResult
-from langaug.samplers import BaseSampler, RandomSampler, SamplerConfig, StratifiedSampler
+from langaug.samplers import BaseSampler, ExclusiveSampler, RandomSampler, SamplerConfig, StratifiedSampler
 from langaug.services import BaseLLMService, LLMServiceConfig, OpenAIService
 from langaug.transforms import BaseTransform, ClassSwapInput, ClassSwapOutput, ClassSwapTransform, TransformResult
 from langaug.utils import PromptLoader
@@ -29,6 +29,7 @@ __all__ = [
 	"Pipeline",
 	"PipelineResult",
 	"BaseSampler",
+	"ExclusiveSampler",
 	"RandomSampler",
 	"StratifiedSampler",
 	"SamplerConfig",

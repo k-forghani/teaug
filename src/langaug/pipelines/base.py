@@ -1,6 +1,5 @@
 import logging
 from typing import Any, Generic, TypeVar
-from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -22,7 +21,7 @@ class PipelineResult(BaseModel, Generic[T]):
 class Pipeline:
     def __init__(self, transforms: list[BaseTransform], pipeline_id: str | None = None) -> None:
         self._transforms = transforms
-        self._pipeline_id = pipeline_id or f"pipeline_{uuid4().hex[:8]}"
+        self._pipeline_id = pipeline_id or "Pipeline"
         self._validate_chain()
 
     @property

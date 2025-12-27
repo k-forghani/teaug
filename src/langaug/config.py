@@ -8,7 +8,7 @@ class OpenAISettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OPENAI_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     api_key: str = Field(..., env="OPENAI_API_KEY")
-    model: str = Field(default="gpt-5-nano", env="OPENAI_MODEL")
+    model: str = Field(default="gpt-4.1-nano-2025-04-14", env="OPENAI_MODEL")
     temperature: float = Field(default=0.7, env="OPENAI_TEMPERATURE")
     max_tokens: int | None = Field(default=None, env="OPENAI_MAX_TOKENS")
     reasoning_effort: str | None = Field(default=None, env="OPENAI_REASONING_EFFORT")
