@@ -8,7 +8,7 @@
 - **Package Manager:** `uv`.
 - **LLM Orchestration:** LangChain.
 - **Validation:** Pydantic v2 (Strict usage for data modeling).
-- **Logging:** Logging (No `print` statements).
+- **Logging:** Loguru (No `print` statements).
 - **Observability:** Langfuse (Integration required for all LLM services).
 
 ## Project Structure
@@ -80,7 +80,7 @@ The project follows a strict Object-Oriented design. Components are designed for
 
 - **Comments:** DO NOT add docstrings or comments unless logic is highly complex and non-obvious.
 - **Type Hinting:** Use modern Python 3.13+ syntax (e.g., `list[str]` instead of `List[str]`, `str | None` instead of `Optional[str]`). Annotate all inputs and outputs.
-- **Output:** DO NOT use `print()`. Use `logging` for all terminal outputs.
+- **Output:** DO NOT use `print()`. Use `loguru` for all terminal outputs.
 - **Logic:** Prefer standard library or installed package features over custom re-implementations. Explore documentation via MCP tools if unsure of latest syntax.
 - **Configuration:** Use Pydantic models to manage settings. Load from `.env` (global) inspired from `.env.example`.
 

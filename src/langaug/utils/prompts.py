@@ -1,10 +1,8 @@
-import logging
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, Template
+from loguru import logger
 from pydantic import BaseModel
-
-logger = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).parent.parent / "data" / "prompts"
 
@@ -35,5 +33,5 @@ class PromptLoader:
         if isinstance(context, BaseModel):
             context = context.model_dump()
         rendered = template.render(**context)
-        logger.debug("Rendered prompt (%d chars)", len(rendered))
+        logger.debug("Rendered prompt ({} chars)", len(rendered))
         return rendered

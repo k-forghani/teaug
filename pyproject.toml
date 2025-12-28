@@ -1,5 +1,5 @@
 [project]
-name = "teaug"
+name = "langaug"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -13,6 +13,8 @@ dependencies = [
 	"datasets",
 	"jinja2",
 	"python-dotenv",
+	"tqdm>=4.67.1",
+	"loguru>=0.7.3",
 ]
 
 [dependency-groups]

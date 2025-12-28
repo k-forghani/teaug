@@ -1,13 +1,11 @@
-import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
+from loguru import logger
 from pydantic import BaseModel
 
 from langaug.services.base import BaseLLMService
 from langaug.utils.prompts import PromptLoader
-
-logger = logging.getLogger(__name__)
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -54,7 +52,7 @@ class BaseTransform(ABC, Generic[InputT, OutputT]):
         raise NotImplementedError
 
     def execute(self, record: InputT) -> TransformResult[OutputT]:
-        logger.info("Executing transform: %s", self._transform_id)
+        logger.info("Executing transform: {}", self._transform_id)
 
         try:
             if self._llm_service is None:
@@ -67,7 +65,7 @@ class BaseTransform(ABC, Generic[InputT, OutputT]):
             return TransformResult(success=True, output=merged)
 
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Transform %s failed: %s", self._transform_id, exc)
+            logger.exception("Transform {} failed: {}", self._transform_id, exc)
             return TransformResult(success=False, error=str(exc))
 
     def _execute_deterministic(self, record: InputT) -> TransformResult[OutputT]:

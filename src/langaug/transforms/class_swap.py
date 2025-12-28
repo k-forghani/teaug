@@ -1,23 +1,31 @@
-import logging
-
+from loguru import logger
 from pydantic import BaseModel, Field
 
 from langaug.services.base import BaseLLMService
 from langaug.transforms.base import BaseTransform
 from langaug.utils.prompts import PromptLoader
 
-logger = logging.getLogger(__name__)
-
-
 class ClassSwapInput(BaseModel):
     texts: list[str]
     source_labels: list[str | int]
     target_labels: list[str | int]
+    label_names: dict[str | int, str] | None = None
     label_descriptions: dict[str | int, str] | None = None
 
 
+class ClassSwapItem(BaseModel):
+    output: str = Field(description="Rewritten sentence aligned to the target sentiment.")
+    target_label: str | int = Field(description="Target sentiment label for the rewritten sentence.")
+
+
 class ClassSwapOutput(BaseModel):
-    texts: list[str] = Field(description="Transformed texts with swapped classes in order")
+    items: list[ClassSwapItem] = Field(
+        description="Array of rewritten items aligned with the input order."
+    )
+
+    @property
+    def texts(self) -> list[str]:
+        return [item.output for item in self.items]
 
 
 class ClassSwapTransform(BaseTransform[ClassSwapInput, ClassSwapOutput]):
@@ -37,6 +45,11 @@ class ClassSwapTransform(BaseTransform[ClassSwapInput, ClassSwapOutput]):
 
     def _render_prompt(self, record: ClassSwapInput) -> str:
         def to_label(value: str | int) -> str:
+            if record.label_names:
+                if value in record.label_names:
+                    return record.label_names[value]
+                if str(value) in record.label_names:
+                    return record.label_names[str(value)]  # type: ignore[index]
             if record.label_descriptions:
                 if value in record.label_descriptions:
                     return record.label_descriptions[value]
@@ -54,10 +67,30 @@ class ClassSwapTransform(BaseTransform[ClassSwapInput, ClassSwapOutput]):
         ]
 
         all_labels = []
-        if record.label_descriptions:
-            all_labels = [{"key": key, "value": value} for key, value in record.label_descriptions.items()]
+        if record.label_names and record.label_descriptions:
+            for key, name in record.label_names.items():
+                description = record.label_descriptions.get(key)
+                if description is None:
+                    description = record.label_descriptions.get(str(key))
+                all_labels.append(
+                    {
+                        "name": name,
+                        "description": description or "",
+                    }
+                )
+        elif record.label_descriptions:
+            for key, description in record.label_descriptions.items():
+                all_labels.append(
+                    {
+                        "name": str(key),
+                        "description": description,
+                    }
+                )
+        elif record.label_names:
+            for name in record.label_names.values():
+                all_labels.append({"name": name, "description": ""})
 
         return PromptLoader.render(self._prompt, {"items": pairs, "all_labels": all_labels})
 
     def _merge_output(self, input_record: ClassSwapInput, llm_output: ClassSwapOutput) -> ClassSwapOutput:
-        return ClassSwapOutput(texts=llm_output.texts)
+        return llm_output

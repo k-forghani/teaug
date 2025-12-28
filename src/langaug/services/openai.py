@@ -1,16 +1,14 @@
-import logging
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
+from loguru import logger
 from pydantic import BaseModel
 
 from langaug.config import get_settings
 from langaug.services.base import BaseLLMService
-
-logger = logging.getLogger(__name__)
 
 
 class OpenAIService(BaseLLMService):
@@ -34,7 +32,7 @@ class OpenAIService(BaseLLMService):
 
         self._reasoning_effort = kwargs.get("reasoning_effort", settings.openai.reasoning_effort)
 
-        logger.info("Creating OpenAI client with model: %s", config["model"])
+        logger.info("Creating OpenAI client with model: {}", config["model"])
         return ChatOpenAI(**config)
 
     def _get_callbacks(self) -> list[Any]:
@@ -69,7 +67,7 @@ class OpenAIService(BaseLLMService):
         if output_schema is not None:
             structured_client = client.with_structured_output(output_schema)
             response = structured_client.invoke(prompt, config={"callbacks": callbacks}, **kwargs)
-            logger.debug("Structured response received: %s", type(response).__name__)
+            logger.debug("Structured response received: {}", type(response).__name__)
             return response
 
         response = client.invoke(prompt, config={"callbacks": callbacks}, **kwargs)

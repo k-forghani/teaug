@@ -1,7 +1,9 @@
 import logging
+import sys
 from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from loguru import logger
 
 
 class OpenAISettings(BaseSettings):
@@ -36,8 +38,27 @@ def get_settings() -> Settings:
 
 
 def setup_logging(level: str = "INFO") -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    class InterceptHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            try:
+                log_level = logger.level(record.levelname).name
+            except ValueError:
+                log_level = record.levelno
+
+            frame = logging.currentframe()
+            depth = 2
+            while frame and frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            logger.opt(depth=depth, exception=record.exc_info).log(log_level, record.getMessage())
+
+    logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
+    logger.remove()
+    logger.add(
+        sys.stderr,
+        level=level.upper(),
+        colorize=True,
+        backtrace=False,
+        diagnose=False,
     )

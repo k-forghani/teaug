@@ -1,25 +1,25 @@
 import csv
 import logging
+import random
+import sys
+from collections import Counter
 from pathlib import Path
 
+from loguru import logger
 from pydantic import BaseModel
+from tqdm import tqdm
 
 import langaug
 from langaug import (
     ClassSwapInput,
-    ClassSwapOutput,
     ClassSwapTransform,
     DatasetMeta,
     ExclusiveSampler,
     HuggingFaceLoader,
     Pipeline,
     SamplerConfig,
-    setup_logging,
 )
 from langaug.datasets.base import Dataset
-
-setup_logging("INFO")
-logger = logging.getLogger(__name__)
 
 
 class SentimentRecord(BaseModel):
@@ -32,34 +32,91 @@ class AugmentedSentimentRecord(BaseModel):
     text: str
     label: int
     original_text: str | None = None
+    source_label: int | None = None
     meta: DatasetMeta | None = None
 
 
-LABEL_DESCRIPTIONS = {
-    0: "Very Negative",
-    1: "Negative",
-    2: "Neutral",
-    3: "Positive",
-    4: "Very Positive"
+CLASS_DEFINITIONS = {
+    0: {
+        "name": "Very Negative",
+        "description": "intense dissatisfaction, frustration, or strong criticism",
+    },
+    1: {
+        "name": "Negative",
+        "description": "clear dislike, disappointment, or criticism without extremes",
+    },
+    2: {
+        "name": "Neutral",
+        "description": "factual or balanced tone with no strong positive/negative cues",
+    },
+    3: {
+        "name": "Positive",
+        "description": "clear approval, satisfaction, or praise without extremes",
+    },
+    4: {
+        "name": "Very Positive",
+        "description": "strong enthusiasm, admiration, or high praise",
+    },
 }
+LABEL_NAMES = {key: value["name"] for key, value in CLASS_DEFINITIONS.items()}
+LABEL_DESCRIPTIONS = {key: value["description"] for key, value in CLASS_DEFINITIONS.items()}
+DATASET_SOURCE = "kforghani/sentipers"
+DATASET_SPLIT = "train"
+CACHE_CSV_PATH = Path("data/base/sentipers_train.csv")
+OUTPUT_CSV_PATH = Path("data/output/augmented_sentipers_train.csv")
+SEED = 42
+LLM_TEMPERATURE = 1
+LLM_MAX_TOKENS = 8192
+BATCH_SIZE = 5
+SAMPLE_SIZE = 4000
+BASE_SAMPLE_SEED = 42
+OUTPUT_SHUFFLE = True
+OUTPUT_SHUFFLE_SEED = 42
+OUTPUT_METADATA_FIELDS = ["is_synthetic", "source_label", "pipeline_id", "sampler_id", "source_index"]
+OUTPUT_FIELDNAMES = ["text", "label", *OUTPUT_METADATA_FIELDS]
+LOG_FILE_PATH = Path("data/output/class_swap_demo.log")
 
-AUGMENTATION_RULES = [
-    # Class 0 (Very Negative) - needs ~740 - from positive classes for contrast
-    {"source": 3, "target": 0, "count": 370},
-    {"source": 4, "target": 0, "count": 370},
-    
-    # Class 1 (Negative) - needs ~570 - from positive classes for contrast
-    {"source": 3, "target": 1, "count": 300},
-    {"source": 4, "target": 1, "count": 270},
-    
-    # Class 3 (Positive) - needs ~140 - from negative classes for contrast
-    {"source": 1, "target": 3, "count": 115},
-    {"source": 0, "target": 3, "count": 25},
-    
-    # Class 4 (Very Positive) - needs ~385 - from negative classes for contrast
-    {"source": 1, "target": 4, "count": 300},
-    {"source": 0, "target": 4, "count": 85},
-]
+
+class InterceptHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        frame = logging.currentframe()
+        depth = 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+def configure_logging() -> None:
+    logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
+    logger.remove()
+    logger.add(
+        sys.stderr,
+        level="WARNING",
+        colorize=True,
+        backtrace=False,
+        diagnose=False,
+    )
+    logger.add(
+        LOG_FILE_PATH,
+        level="INFO",
+        encoding="utf-8",
+        backtrace=False,
+        diagnose=False,
+    )
+
+TARGET_AUGMENTATION_COUNTS = {
+    0: 1445,
+    1: 1080,
+    3: 225,
+    4: 755,
+}
 
 
 def build_class_swap_input(records: list[SentimentRecord], target_label: int) -> ClassSwapInput:
@@ -70,120 +127,235 @@ def build_class_swap_input(records: list[SentimentRecord], target_label: int) ->
         texts=texts,
         source_labels=source_labels,
         target_labels=target_labels,
+        label_names=LABEL_NAMES,
         label_descriptions=LABEL_DESCRIPTIONS,
     )
 
 
 def main() -> None:
+    LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    configure_logging()
     logger.info("Starting Class Swap Demo")
+    logger.info("File logging enabled at {}", LOG_FILE_PATH)
 
-    seed = 42
-    llm_service = langaug.OpenAIService().configure(temperature=0.7, max_tokens=8192)
-
-    cache_csv = Path("data/base/sentipers_train.csv")
+    llm_service = langaug.OpenAIService().configure(
+        temperature=LLM_TEMPERATURE,
+        max_tokens=LLM_MAX_TOKENS,
+    )
 
     loader = HuggingFaceLoader(schema=SentimentRecord, field_mapping={"text": "text", "label": "label"})
-    full_dataset = loader.load(source="kforghani/sentipers", split="train")
-    base_records = full_dataset.records[:2000]
-    dataset = full_dataset.derive(base_records)
-    logger.info("Loaded %d records from full dataset, using first 2000 as base", len(full_dataset))
+    full_dataset = loader.load(source=DATASET_SOURCE, split=DATASET_SPLIT)
+    logger.info("Loaded {} records from full dataset", len(full_dataset))
 
-    cache_csv.parent.mkdir(parents=True, exist_ok=True)
-    with cache_csv.open("w", encoding="utf-8", newline="") as file:
+    full_labels = [record.label for record in full_dataset.records]
+    full_counts = Counter(full_labels)
+
+    label_to_records: dict[int, list[SentimentRecord]] = {label: [] for label in LABEL_DESCRIPTIONS}
+    for record in full_dataset.records:
+        label_to_records[record.label].append(record)
+
+    total_records = len(full_dataset)
+    raw_targets = {
+        label: (full_counts.get(label, 0) / total_records) * SAMPLE_SIZE
+        for label in LABEL_DESCRIPTIONS
+    }
+    targets = {label: int(raw_targets[label]) for label in LABEL_DESCRIPTIONS}
+    remainder = SAMPLE_SIZE - sum(targets.values())
+    if remainder > 0:
+        fractional_order = sorted(
+            LABEL_DESCRIPTIONS,
+            key=lambda label: raw_targets[label] - targets[label],
+            reverse=True,
+        )
+        for label in fractional_order[:remainder]:
+            targets[label] += 1
+
+    rng = random.Random(BASE_SAMPLE_SEED)
+    sampled_records: list[SentimentRecord] = []
+    for label in LABEL_DESCRIPTIONS:
+        records = label_to_records[label]
+        target = min(targets[label], len(records))
+        sampled_records.extend(rng.sample(records, target))
+
+    dataset = full_dataset.derive(sampled_records)
+    sampled_counts = Counter(record.label for record in sampled_records)
+    logger.info("Sampled {} records for base dataset", len(sampled_records))
+    for label in sorted(LABEL_DESCRIPTIONS):
+        logger.info(
+            "Base sample {}: {} records",
+            LABEL_DESCRIPTIONS[label],
+            sampled_counts.get(label, 0),
+        )
+
+    CACHE_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with CACHE_CSV_PATH.open("w", encoding="utf-8", newline="") as file:
         fieldnames = ["text", "label"]
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         for record in dataset.records:
             writer.writerow({"text": record.text, "label": record.label})
-    logger.info("Cached base dataset CSV at %s", cache_csv)
+    logger.info("Cached base dataset CSV at {}", CACHE_CSV_PATH)
+
+    random.seed(SEED)
+    logger.info("Global random seed set to {}", SEED)
 
     class_swap = ClassSwapTransform(llm_service=llm_service)
     pipeline = Pipeline(transforms=[class_swap])
+    logger.info("Pipeline initialized: {} (id={})", pipeline, pipeline.pipeline_id)
 
-    all_augmented: list[AugmentedSentimentRecord] = []
-
-    for rule in AUGMENTATION_RULES:
-        source_label = rule["source"]
-        target_label = rule["target"]
-        count = rule["count"]
-
+    label_to_records = {label: [r for r in dataset.records if r.label == label] for label in CLASS_DEFINITIONS}
+    source_datasets = {label: dataset.derive(records) for label, records in label_to_records.items()}
+    source_samplers = {
+        label: ExclusiveSampler(SamplerConfig(count=BATCH_SIZE, seed=None), sampler_id=f"ExclusiveSampler[{label}]")
+        for label in CLASS_DEFINITIONS
+    }
+    for label in sorted(CLASS_DEFINITIONS):
         logger.info(
-            "Augmenting %s → %s (%d records)",
-            LABEL_DESCRIPTIONS[source_label],
-            LABEL_DESCRIPTIONS[target_label],
-            count,
+            "Source class {} availability: {} records",
+            LABEL_NAMES[label],
+            len(label_to_records[label]),
         )
 
-        source_records = [r for r in dataset.records if r.label == source_label]
-        if len(source_records) < count:
-            logger.warning(
-                "Not enough source records for %s (available: %d, requested: %d)",
-                LABEL_DESCRIPTIONS[source_label],
-                len(source_records),
-                count,
+    all_augmented: list[AugmentedSentimentRecord] = []
+    total_target = sum(TARGET_AUGMENTATION_COUNTS.values())
+    logger.info(
+        "Planned augmentation total: {} records across {} target classes",
+        total_target,
+        len(TARGET_AUGMENTATION_COUNTS),
+    )
+
+    exhausted_sources: set[int] = set()
+
+    with tqdm(total=total_target, desc="Augmentation", unit="records") as overall_bar:
+        for target_label in sorted(TARGET_AUGMENTATION_COUNTS):
+            target_count = TARGET_AUGMENTATION_COUNTS[target_label]
+            source_labels = [label for label in sorted(CLASS_DEFINITIONS) if label != target_label]
+            active_sources = [label for label in source_labels if label not in exhausted_sources]
+
+            logger.info(
+                "Target {}: need {} augmented records (sources={})",
+                LABEL_NAMES[target_label],
+                target_count,
+                [LABEL_NAMES[label] for label in active_sources],
             )
-            count = len(source_records)
 
-        sampler = ExclusiveSampler(SamplerConfig(count=5, seed=seed))
-        source_dataset = dataset.derive(source_records)
-        
-        processed = 0
-        batch_num = 0
-        
-        while processed < count:
-            batch_count = min(5, count - processed)
-            sampler._config.count = batch_count
-            
-            sampled = sampler.sample(source_dataset)
-            sampled_records = [record for _, record in sampled]
-            
-            if not sampled_records:
-                logger.warning("No more records to sample for rule %s → %s", source_label, target_label)
-                break
+            processed = 0
+            attempted = 0
+            round_num = 0
 
-            batch_input = build_class_swap_input(sampled_records, target_label)
+            with tqdm(
+                total=target_count,
+                desc=f"Target {LABEL_DESCRIPTIONS[target_label]}",
+                unit="records",
+                leave=False,
+            ) as target_bar:
+                while processed < target_count and active_sources:
+                    round_num += 1
+                    successes_this_round = 0
 
-            result = pipeline.execute(batch_input)
-            if not result.success or not result.final_output:
-                logger.error(
-                    "Class swap failed for rule %s → %s (batch %d): %s",
-                    source_label,
-                    target_label,
-                    batch_num,
-                    result.error,
-                )
-                batch_num += 1
-                processed += len(sampled_records)
-                continue
+                    for source_label in list(active_sources):
+                        if processed >= target_count:
+                            break
 
-            for idx, text in enumerate(result.final_output.texts):
-                source_index, _ = sampled[idx]
-                meta = DatasetMeta(
-                    is_synthetic=True,
-                    pipeline_id=pipeline.pipeline_id,
-                    sampler_id=sampler.sampler_id,
-                    source_index=source_index,
-                )
-                all_augmented.append(
-                    AugmentedSentimentRecord(
-                        text=text,
-                        label=target_label,
-                        original_text=batch_input.texts[idx],
-                        meta=meta,
-                    )
-                )
-            
-            processed += len(sampled_records)
-            batch_num += 1
-            logger.info("Processed batch %d (%d/%d records)", batch_num, processed, count)
+                        batch_count = min(BATCH_SIZE, target_count - processed)
+                        sampler = source_samplers[source_label]
+                        sampler._config.count = batch_count
 
-            processed += len(sampled_records)
-            batch_num += 1
-            logger.info("Processed batch %d (%d/%d records)", batch_num, processed, count)
+                        logger.info(
+                            "Target {} round {}: sampling {} from {} (processed={}/{})",
+                            LABEL_NAMES[target_label],
+                            round_num,
+                            batch_count,
+                            LABEL_NAMES[source_label],
+                            processed,
+                            target_count,
+                        )
 
-        logger.info("Generated %d augmented records for this rule", processed)
+                        sampled = sampler.sample(source_datasets[source_label])
+                        sampled_records = [record for _, record in sampled]
 
-    output_csv = Path("data/output/augmented_sentipers_train.csv")
+                        if not sampled_records:
+                            exhausted_sources.add(source_label)
+                            logger.warning(
+                                "Source {} exhausted; skipping for remaining targets",
+                                LABEL_NAMES[source_label],
+                            )
+                            continue
+
+                        attempted += len(sampled_records)
+                        batch_input = build_class_swap_input(sampled_records, target_label)
+                        result = pipeline.execute(batch_input)
+                        if not result.success or not result.final_output:
+                            logger.error(
+                                "Target {} round {} failed from {}: {}",
+                                LABEL_NAMES[target_label],
+                                round_num,
+                                LABEL_NAMES[source_label],
+                                result.error,
+                            )
+                            continue
+
+                        expected_target = LABEL_NAMES[target_label]
+                        accepted = 0
+                        for (source_index, _), item in zip(sampled, result.final_output.items):
+                            if item.target_label not in {
+                                expected_target,
+                                target_label,
+                                str(target_label),
+                            }:
+                                logger.warning(
+                                    "LLM target mismatch: expected {}, got {}",
+                                    expected_target,
+                                    item.target_label,
+                                )
+                                continue
+                            meta = DatasetMeta(
+                                is_synthetic=True,
+                                pipeline_id=pipeline.pipeline_id,
+                                sampler_id=sampler.sampler_id,
+                                source_index=source_index,
+                            )
+                            all_augmented.append(
+                                AugmentedSentimentRecord(
+                                    text=item.output,
+                                    label=target_label,
+                                    source_label=source_label,
+                                    original_text=None,
+                                    meta=meta,
+                                )
+                            )
+                            accepted += 1
+
+                        if accepted < len(sampled_records):
+                            logger.warning(
+                                "Dropped {} records due to target mismatch for {} → {}",
+                                len(sampled_records) - accepted,
+                                LABEL_NAMES[source_label],
+                                LABEL_NAMES[target_label],
+                            )
+
+                        processed += accepted
+                        successes_this_round += accepted
+                        target_bar.update(accepted)
+                        overall_bar.update(accepted)
+
+                    if successes_this_round == 0:
+                        logger.error(
+                            "Target {} stopping: no successful augmentations in round {}",
+                            LABEL_NAMES[target_label],
+                            round_num,
+                        )
+                        break
+
+                    active_sources = [label for label in source_labels if label not in exhausted_sources]
+
+            logger.info(
+                "Target {} completed: {} augmented records generated (attempted={})",
+                LABEL_NAMES[target_label],
+                processed,
+                attempted,
+            )
+
     combined_records: list[SentimentRecord | AugmentedSentimentRecord] = []
 
     for record in dataset.records:
@@ -192,16 +364,41 @@ def main() -> None:
     for augmented_record in all_augmented:
         combined_records.append(augmented_record)
 
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    with output_csv.open("w", encoding="utf-8", newline="") as file:
-        fieldnames = ["text", "label"]
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
+    if OUTPUT_SHUFFLE:
+        rng = random.Random(OUTPUT_SHUFFLE_SEED)
+        rng.shuffle(combined_records)
+        logger.info(
+            "Shuffled combined records before export (seed={}, total={})",
+            OUTPUT_SHUFFLE_SEED,
+            len(combined_records),
+        )
+
+    OUTPUT_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with OUTPUT_CSV_PATH.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=OUTPUT_FIELDNAMES)
         writer.writeheader()
         for record in combined_records:
-            writer.writerow({"text": record.text, "label": record.label})
+            meta = record.meta
+            is_synthetic = bool(meta and meta.is_synthetic)
+            writer.writerow(
+                {
+                    "text": record.text,
+                    "label": record.label,
+                    "is_synthetic": is_synthetic,
+                    "source_label": getattr(record, "source_label", None),
+                    "pipeline_id": meta.pipeline_id if meta else None,
+                    "sampler_id": meta.sampler_id if meta else None,
+                    "source_index": meta.source_index if meta else None,
+                }
+            )
 
-    logger.info("Augmented dataset saved to %s (original: %d, augmented: %d, total: %d)", 
-                output_csv, len(dataset), len(all_augmented), len(combined_records))
+    logger.info(
+        "Augmented dataset saved to {} (original: {}, augmented: {}, total: {})",
+        OUTPUT_CSV_PATH,
+        len(dataset),
+        len(all_augmented),
+        len(combined_records),
+    )
 
 
 if __name__ == "__main__":

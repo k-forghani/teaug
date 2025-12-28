@@ -1,11 +1,9 @@
-import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from loguru import logger
 from pydantic import BaseModel, Field
-
-logger = logging.getLogger(__name__)
 
 
 class LLMServiceConfig(BaseModel):
@@ -39,7 +37,7 @@ class BaseLLMService(ABC):
 
     def configure(self, **kwargs: Any) -> "BaseLLMService":
         self._client = self._create_client(**kwargs)
-        logger.info("LLM service configured: %s", self.__class__.__name__)
+        logger.info("LLM service configured: {}", self.__class__.__name__)
         return self
 
     def invoke(
@@ -53,7 +51,7 @@ class BaseLLMService(ABC):
         if output_schema is not None:
             structured_client = self.client.with_structured_output(output_schema)
             response = structured_client.invoke(prompt, config={"callbacks": callbacks}, **kwargs)
-            logger.debug("Structured response received: %s", type(response).__name__)
+            logger.debug("Structured response received: {}", type(response).__name__)
             return response
 
         response = self.client.invoke(prompt, config={"callbacks": callbacks}, **kwargs)
