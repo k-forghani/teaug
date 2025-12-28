@@ -1,13 +1,11 @@
-import logging
 from typing import Any, TypeVar
 
 from datasets import Dataset as HFDataset
 from datasets import load_dataset
+from loguru import logger
 from pydantic import BaseModel
 
 from langaug.datasets.base import BaseLoader, Dataset
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -24,7 +22,7 @@ class HuggingFaceLoader(BaseLoader[T]):
         subset: str | None = None,
         limit: int | None = None,
     ) -> Dataset[T]:
-        logger.info("Loading HuggingFace dataset: %s (split=%s, subset=%s)", source, split, subset)
+        logger.info("Loading HuggingFace dataset: {} (split={}, subset={})", source, split, subset)
 
         kwargs: dict[str, Any] = {"path": source, "split": split}
         if subset:
@@ -41,7 +39,7 @@ class HuggingFaceLoader(BaseLoader[T]):
             record = self._schema.model_validate(mapped_item)
             records.append(record)
 
-        logger.info("Loaded %d records from HuggingFace", len(records))
+        logger.info("Loaded {} records from HuggingFace", len(records))
         return Dataset(records=records, schema=self._schema)
 
     def _apply_mapping(self, item: dict[str, Any]) -> dict[str, Any]:

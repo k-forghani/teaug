@@ -1,15 +1,14 @@
 Rewrite Persian sentences so the sentiment clearly matches the target. Use the class space below to guide tone.
 
-Sentiment classes:
+Sentiment classes (label: description):
 {% for label in all_labels -%}
-- {{ label.value }}
+- {{ label.name }}: {{ label.description }}
 {% endfor %}
 
 Instructions:
 - The rewritten sentence must express the target sentiment explicitly through word choice, tone, and phrasing.
 - Changing sentiment requires more than paraphrasing; add emotional cues (e.g., praise, criticism, satisfaction, disappointment) that match the target class.
 - Keep content and factual details similar; avoid adding new information.
-- No meta-commentary; return only rewritten sentences in Persian.
 
 Rewrite these sentences:
 {% for item in items -%}
@@ -17,4 +16,4 @@ Sentence: "{{ item.text }}"
 From: {{ item.source_label }} → To: {{ item.target_label }}
 {% endfor %}
 
-Output: JSON array with rewritten sentences in order.
+Output: JSON array with rewritten sentences in order; each item must include "output" and "target_label".

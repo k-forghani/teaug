@@ -6,3 +6,5 @@ pydantic-settings
 datasets
 jinja2
 python-dotenv
+tqdm
+loguru

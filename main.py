@@ -1,11 +1,9 @@
-import logging
-
+from loguru import logger
 from langaug import setup_logging
 
 
 def main() -> None:
     setup_logging("INFO")
-    logger = logging.getLogger(__name__)
     logger.info("langaug initialized")
 
 

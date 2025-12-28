@@ -1,13 +1,11 @@
-import logging
 from typing import Any, Callable, Generic, TypeVar
 
+from loguru import logger
 from pydantic import BaseModel
 
 from langaug.datasets.base import Dataset, DatasetMeta
 from langaug.pipelines.base import Pipeline, PipelineResult
 from langaug.samplers.base import BaseSampler
-
-logger = logging.getLogger(__name__)
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)

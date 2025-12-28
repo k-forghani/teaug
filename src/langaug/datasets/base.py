@@ -1,13 +1,11 @@
 import json
-import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
+from loguru import logger
 from pydantic import BaseModel, Field
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -27,7 +25,7 @@ class Dataset(Generic[T]):
     def __init__(self, records: list[T], schema: type[T]) -> None:
         self._records = records
         self._schema = schema
-        logger.info("Dataset created with %d records", len(records))
+        logger.info("Dataset created with {} records", len(records))
 
     @property
     def records(self) -> list[T]:
@@ -51,7 +49,7 @@ class Dataset(Generic[T]):
 
     def merge(self, other: "Dataset[T]") -> "Dataset[T]":
         combined = self._records + other.records
-        logger.info("Merged datasets: %d + %d = %d", len(self), len(other), len(combined))
+        logger.info("Merged datasets: {} + {} = {}", len(self), len(other), len(combined))
         return Dataset(records=combined, schema=self._schema)
 
     def to_jsonl(self, path: Path) -> None:
@@ -59,7 +57,7 @@ class Dataset(Generic[T]):
         with path.open("w", encoding="utf-8") as file:
             for record in self._records:
                 file.write(record.model_dump_json() + "\n")
-        logger.info("Exported %d records to %s", len(self), path)
+        logger.info("Exported {} records to {}", len(self), path)
 
     @classmethod
     def from_jsonl(cls, path: Path, schema: type[T]) -> "Dataset[T]":
@@ -68,7 +66,7 @@ class Dataset(Generic[T]):
             for line in file:
                 data = json.loads(line.strip())
                 records.append(schema.model_validate(data))
-        logger.info("Loaded %d records from %s", len(records), path)
+        logger.info("Loaded {} records from {}", len(records), path)
         return cls(records=records, schema=schema)
 
 

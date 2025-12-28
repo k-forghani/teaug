@@ -1,11 +1,9 @@
-import logging
 from typing import Any, Generic, TypeVar
 
+from loguru import logger
 from pydantic import BaseModel
 
 from langaug.transforms.base import BaseTransform, TransformResult
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -43,15 +41,14 @@ class Pipeline:
             if not required_fields.issubset(current_fields):
                 missing = required_fields - current_fields
                 msg = (
-                    "Pipeline validation failed: Transform %d output missing fields required by Transform %d: %s"
-                    % (index, index + 1, missing)
-                )
+                    "Pipeline validation failed: Transform {} output missing fields required by Transform {}: {}"
+                ).format(index, index + 1, missing)
                 raise ValueError(msg)
 
-        logger.info("Pipeline %s validated with %d transforms", self._pipeline_id, len(self._transforms))
+        logger.info("Pipeline {} validated with {} transforms", self._pipeline_id, len(self._transforms))
 
     def execute(self, record: BaseModel) -> PipelineResult:
-        logger.info("Executing pipeline: %s", self._pipeline_id)
+        logger.info("Executing pipeline: {}", self._pipeline_id)
 
         current_data = record
         intermediate: list[dict[str, Any]] = []
@@ -69,7 +66,7 @@ class Pipeline:
             )
 
             if not result.success:
-                logger.error("Pipeline %s failed at %s", self._pipeline_id, transform.transform_id)
+                logger.error("Pipeline {} failed at {}", self._pipeline_id, transform.transform_id)
                 return PipelineResult(
                     success=False,
                     intermediate_results=intermediate,
@@ -79,5 +76,5 @@ class Pipeline:
 
             current_data = result.output
 
-        logger.info("Pipeline %s completed successfully", self._pipeline_id)
+        logger.info("Pipeline {} completed successfully", self._pipeline_id)
         return PipelineResult(success=True, final_output=current_data, intermediate_results=intermediate)

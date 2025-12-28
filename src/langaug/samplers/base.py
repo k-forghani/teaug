@@ -1,13 +1,11 @@
-import logging
 import random
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
+from loguru import logger
 from pydantic import BaseModel
 
 from langaug.datasets.base import Dataset
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -40,13 +38,13 @@ class BaseSampler(ABC, Generic[T]):
         return sampled
 
     def sample(self, dataset: Dataset[T]) -> list[tuple[int, T]]:
-        logger.info("Sampling from dataset with %d records", len(dataset))
+        logger.info("Sampling from dataset with {} records", len(dataset))
 
         candidates = self._pre_filter(dataset)
         sampled = self._sample(candidates)
         result = self._post_filter(sampled)
 
-        logger.info("Final sample size: %d", len(result))
+        logger.info("Final sample size: {}", len(result))
         return result
 
 
